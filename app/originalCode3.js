@@ -13,7 +13,7 @@ export default function Home() {
 
   const [message, setMessage] = useState('');
   const [wikiTitle, setWikiTitle] = useState('');
-  const [funFacts, setFunFacts] = useState([]);
+  const [wikiSummary, setWikiSummary] = useState('');
 
   // Function to extract the Wikipedia link from the assistant's latest message
   const extractWikiLink = (text) => {
@@ -22,51 +22,22 @@ export default function Home() {
     return match ? match[1] : null;
   };
 
-  // Function to send a fun facts prompt to the assistant and update fun facts state
-  const fetchFunFacts = async (title) => {
-    const funFactsPrompt = `Give me 5 fun facts about ${title}. Please do not bold or italicize the text or use any special format, and for this message only, do not include the Wikipedia link at the end of the message.`;
-
-    // Send the fun facts prompt to the server
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([...messages, { role: 'user', content: funFactsPrompt }]),
-    });
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-    await reader.read().then(function processText({ done, value }) {
-      if (done) return result;
-      const text = decoder.decode(value || new Uint8Array(), { stream: true });
-      result += text;
-      return reader.read().then(processText);
-    });
-
-    // Update the fun facts based on the assistant's response
-    setFunFacts(result.split('\n').filter(fact => fact.trim()));
-  };
-
-  // Effect to run when messages are updated
-  useEffect(() => {
-    if (messages.length > 0) {
-      const latestAssistantMessage = messages[messages.length - 1];
-      const wikiLink = extractWikiLink(latestAssistantMessage.content);
-
-      if (wikiLink) {
-        const title = wikiLink.split('/').pop().replace(/_/g, ' ');
-        setWikiTitle(title);
-        fetchFunFacts(title); // Fetch fun facts without recording the prompt and response in the chat history
-      }
+  const fetchWikipediaSummary = async (url) => {
+    try {
+      const title = url.split('/').pop();
+      const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+      const data = await response.json();
+      setWikiTitle(data.title);
+      setWikiSummary(data.extract);
+    } catch (error) {
+      console.error('Error fetching Wikipedia summary:', error);
+      setWikiTitle('Error');
+      setWikiSummary('Unable to fetch Wikipedia summary.');
     }
-  }, [messages]); // Depend on messages state
+  };
 
   const sendMessage = async () => {
     if (!message.trim()) return;
-
-    // Update messages state with user message and empty assistant message
     setMessages((messages) => [
       ...messages,
       { role: 'user', content: message },
@@ -103,6 +74,17 @@ export default function Home() {
       return reader.read().then(processText);
     });
 
+    // Extract the Wikipedia link from the latest assistant message
+    const latestAssistantMessage = messages[messages.length - 1];
+    const wikiLink = extractWikiLink(latestAssistantMessage.content);
+
+    console.log(wikiLink);
+
+    if (wikiLink) {
+      // Fetch the Wikipedia summary based on the extracted link
+      await fetchWikipediaSummary(wikiLink);
+    }
+
     setMessage('');
   };
 
@@ -121,8 +103,6 @@ export default function Home() {
           display: 'flex',
           flexDirection: 'column',
           p: 2,
-          backgroundColor: '#003366', // Dark blue background
-          color: '#ffffff', // White text color
         }}
       >
         <Paper
@@ -134,14 +114,13 @@ export default function Home() {
             flexDirection: 'column',
             borderRadius: 2,
             overflow: 'hidden',
-            backgroundColor: '#003366', // Dark blue background
-            color: '#ffffff', // White text color
+            backgroundColor: '#ffffff',
           }}
         >
           <Box
             sx={{
               p: 2,
-              backgroundColor: '#00509e', // Medium blue background for header
+              backgroundColor: 'primary.main',
               color: 'white',
               textAlign: 'center',
             }}
@@ -157,7 +136,7 @@ export default function Home() {
             flexGrow={1}
             overflow="auto"
             p={2}
-            bgcolor="#003366" // Dark blue background for chat area
+            bgcolor="#f0f0f0"
           >
             {messages.map((message, index) => (
               <Box 
@@ -170,8 +149,8 @@ export default function Home() {
                     maxWidth: '75%',
                     padding: 2,
                     borderRadius: 2,
-                    backgroundColor: message.role === 'assistant' ? '#004080' : '#00509e', // Different shades of blue
-                    color: 'white',
+                    backgroundColor: message.role === 'assistant' ? 'primary.light' : 'secondary.light',
+                    color: message.role === 'assistant' ? 'primary.contrastText' : 'secondary.contrastText',
                     boxShadow: 1,
                   }}
                 >
@@ -185,7 +164,7 @@ export default function Home() {
             direction="row"
             spacing={2}
             p={2}
-            borderTop="1px solid #004080" // Darker blue for border
+            borderTop="1px solid #e0e0e0"
           >
             <TextField
               label="Type a message..."
@@ -194,7 +173,6 @@ export default function Home() {
               onChange={(e) => setMessage(e.target.value)}
               variant="outlined"
               size="small"
-              sx={{ backgroundColor: 'white', color: 'black' }} // White background for text field
             />
 
             <Button
@@ -202,7 +180,7 @@ export default function Home() {
               color="primary"
               onClick={sendMessage}
               endIcon={<SendIcon />}
-              sx={{ minWidth: '100px', backgroundColor: '#00509e', color: 'white' }} // Medium blue button
+              sx={{ minWidth: '100px' }}
             >
               Send
             </Button>
@@ -216,8 +194,7 @@ export default function Home() {
           height: '100%',
           p: 2,
           overflowY: 'auto',
-          bgcolor: '#ffffff', // White background for right panel
-          color: '#003366', // Dark blue text color
+          bgcolor: '#f5f5f5',
         }}
       >
         <Paper
@@ -226,24 +203,20 @@ export default function Home() {
             p: 2,
             height: '100%',
             overflowY: 'auto',
-            bgcolor: '#ffffff', // White background for paper
           }}
         >
-          <Typography variant="h6" sx={{ mb: 2, color: '#003366' }}>
-            Fun Facts
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Wikipedia Information
           </Typography>
-          <Typography variant="h5" sx={{ mb: 2, color: '#003366' }}>
+          <Typography variant="h5" sx={{ mb: 2 }}>
             {wikiTitle}
           </Typography>
-          {funFacts.length > 0 ? (
-            funFacts.map((fact, index) => (
-              <Typography key={index} variant="body1" sx={{ mb: 1 }}>
-                {fact}
-              </Typography>
-            ))
-          ) : (
-            <Typography variant="body1">
-              No fun facts available.
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            {wikiSummary}
+          </Typography>
+          {wikiTitle && (
+            <Typography variant="body2">
+              For more details, visit <a href={`https://en.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}`} target="_blank" rel="noopener noreferrer">{wikiTitle} - Wikipedia</a>
             </Typography>
           )}
         </Paper>
